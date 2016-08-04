@@ -24,12 +24,28 @@ for level = LEVELS
             if all(Zr(:)<level) || all(Zr(:)>level)
                 continue;
             end
-            points = [top left bottom left;...
-                bottom left bottom right;...
-                bottom right top right;...
-                top right top left];
-            for kk = 1:4 %For all 4 Triangles in rectangle
-                section = points(kk,:);
+            
+        %      vertex 4 +-------------------+ vertex 3
+	    %               | \               / |
+	    %               |   \    m=4    /   |
+	    %               |     \       /     |
+	    %               |       \   /       |
+	    %               |  m1   center  m3  |
+	    %               |       /   \       |
+	    %               |     /       \     |
+	    %               |   /    m=2    \   |
+	    %               | /               \ |
+	    %      vertex 1 +-------------------+ vertex 2
+        
+            points = [top left bottom left;... % m1
+                bottom left bottom right;...   % m2
+                bottom right top right;...     % m3
+                top right top left];           % m4
+            
+            %Loop m1 to m4
+            %Each triangle uses 3 points, p1, p2, and the center point
+            for m = 1:4 %For all 4 Triangles in rectangle
+                section = points(m,:);
                 p1 = Z(section(1),section(2)); %Triangle point (1) Value and Coordinates
                 p1coords = [X(section(1),section(2)), Y(section(1),section(2))];
                 p2 = Z(section(3),section(4)); %Triangle point (2) Value and Coordinates
@@ -39,23 +55,20 @@ for level = LEVELS
                 coords = [p1coords ; p2coords ; center];
                 pointVals = [p1; p2 ; centerMean];
                 
-                %Points in Triangle on/below/above level
-                on = [p1 p2 centerMean] == level;
-                numO = sum(on);
-                below = [p1 p2 centerMean] < level;
-                numB = sum(below);
-                above = [p1 p2 centerMean] > level;
-                numA = sum(above);
+                %Points in Triangle on/below/above level 
+                numOn = sum([p1 p2 centerMean] == level);
+                numBelow = sum([p1 p2 centerMean] < level);
+                numAbove = sum([p1 p2 centerMean] > level);
                 
-                if numB == 2 &&  numA == 1 ||... %case c
-                        numB == 1 && numA == 2   %case f
+                if numBelow == 2 &&  numAbove == 1 ||... %case c
+                        numBelow == 1 && numAbove == 2   %case f
                     %line is drawn from one edge to another edge of the triangle
                     abVert = coords([p1 p2 centerMean] > level,:);
                     abVal = pointVals([p1 p2 centerMean] > level,:);
                     belVert = coords([p1 p2 centerMean] < level,:);
                     belVal = pointVals([p1 p2 centerMean] < level,:);                    
                     
-                    if numA == 1
+                    if numAbove == 1
                         %Interpolate between point above and points below
                         X1 = (level-abVal(1))*(belVert(1,1)-abVert(1,1))/(belVal(1)-abVal(1))+abVert(1,1);
                         Y1 = (level-abVal(1))*(belVert(1,2)-abVert(1,2))/(belVal(1)-abVal(1))+abVert(1,2);
@@ -63,7 +76,7 @@ for level = LEVELS
                         X2 = (level-abVal(1))*(belVert(2,1)-abVert(1,1))/(belVal(2)-abVal(1))+abVert(1,1);
                         Y2 = (level-abVal(1))*(belVert(2,2)-abVert(1,2))/(belVal(2)-abVal(1))+abVert(1,2);
                         
-                    else
+                    else %elseif numBelow == 1
                         %Interpolate between point below and points above
                         X1 = (level-belVal(1))*(abVert(1,1)-belVert(1,1))/(abVal(1)-belVal(1))+belVert(1,1);
                         Y1 = (level-belVal(1))*(abVert(1,2)-belVert(1,2))/(abVal(1)-belVal(1))+belVert(1,2);
@@ -74,11 +87,11 @@ for level = LEVELS
                     end
                     vert{end+1} = round([X1 Y1 ; X2 Y2],4); %Add line to cell array
                     
-                elseif (numB == 1 && numO == 2) ||... %case d
-                        (numO == 2 && numA == 1)      %case h
+                elseif (numBelow == 1 && numOn == 2) ||... %case d
+                        (numOn == 2 && numAbove == 1)      %case h
                     %line is drawn between the two vertices that lie on the contour level
                     vert{end+1} = round(coords([p1 p2 centerMean] == level,:),4); %Add line to cell array
-                elseif numB == 1 && numA ==1 && numO == 1 %case e
+                elseif numBelow == 1 && numAbove ==1 && numOn == 1 %case e
                     %line be drawn from the vertex on the contour level to a point on the opposite edge
                     onVert = coords([p1 p2 centerMean] == level,:);
                     oppVert = coords([p1 p2 centerMean] ~= level,:);
@@ -125,6 +138,7 @@ for level = LEVELS
         contourCell{cN} = []; %New Cell for a new contour
         %Choose first vertex in first line as arbitrary start point
         coordinate = vert{1}(1,:);
+        FC = vert{ind}(1,:);
         match = true;
         while match
             for ii = 1:length(vert)%Iterate through all lines                
@@ -133,7 +147,7 @@ for level = LEVELS
                 elseif all(coordinate == vert{ii}(1,:)) % Check first vertex in line
                     coordinate = vert{ii}(2,:); % Make other coordinate in the line the next one to compare
                     contourCell{cN}(end+1,:) = vert{ii}(1,:); % Add matched coordinate to contour
-                    vert{ii}(1,:) = [NaN NaN];  % Make into bread so it isn't used again
+                    vert{ii}(1,:) = [];  % Make into bread so it isn't used again
                     vl(ii) = cN; % Modify list
                     ind = ii; % Make this index the one to skip in the next iteration
                     break;
@@ -156,8 +170,11 @@ for level = LEVELS
             end % for 1:length(vert)
             
         end % while match
-        vert = vert(~logical(vl)); %Remove used lines
-        vl = vl(~logical(vl)); %Shorten line tracker so it still works later
+        %delete empty cell arrays
+        logicarray = ~cellfun(@isempty, vert);
+        vert = vert(logicarray);
+%         vert = vert(~logical(vl)); %Remove used lines
+%         vl = vl(~logical(vl)); %Shorten line tracker so it still works later
     end %while ~all(vl)
     
     for ii = 1:length(contourCell)
@@ -165,3 +182,18 @@ for level = LEVELS
     end
 end
 end
+
+% Contour Test
+close all; clear;
+[X,Y] = meshgrid(-1.5:0.1:1.5 , -1.5:0.1:1.5);
+Z = 1./((X.^2+(Y-0.842).*(Y + 0.842)).^2+(X.*(Y-0.842)+X.*(Y-0.842)).^2);
+LEVELS = 1;
+
+C = contourPrototype(X,Y,Z,LEVELS);
+% if length(LEVELS) > 1
+%     contour(X,Y,Z,LEVELS, 'r');
+% else
+%     contour(X,Y,Z,[LEVELS LEVELS], 'r');
+% end
+
+% legend('Phil Contour','Matlab built in contour.m')
