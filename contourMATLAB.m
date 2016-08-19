@@ -6,8 +6,6 @@ plotFlag = 0;
 closeContours = 0; %EXPERIMENTAL
 C = [];
 [rows, cols] = size(X);
-% plot(X,Y,'k.');
-% Y = flip(Y);
 figure; grid on; axis([min(X(:)) max(X(:)) min(Y(:)) max(Y(:))]); hold on;
 %% SECTION 1: PHIL SUBROUTINE
 for level = LEVELS
@@ -25,88 +23,126 @@ for level = LEVELS
         end
     end
     
-    vert = [];
     
     % Loop through GRID
     for ii = 1:rows-1
         for jj = 1:cols-1
             
-            top = ii; bottom = ii+1; left = jj; right = jj+1; %For readability
+            tp = ii; bm = ii+1; lt = jj; rt = jj+1; %For readability
             %Square vertices
-            Zr = Z([top,bottom],[left,right]);
-            
+            Zr = Z([tp,bm],[lt,rt]);
             %Skip if all vertices are below or above level
-            if all(Zr(:)<=level) || all(Zr(:)>=level)
+            if all(Zr(:)<level) || all(Zr(:)>=level)
                 continue;
-            end            
+            end
             
-            %      vertex 4 +--------m4----------+ vertex 3
-            %               |                   |
-            %               |                   |
-            %               |                   |
-            %               |                   |
-            %              m1                   m3
-            %               |                   |
-            %               |                   |
-            %               |                   |
-            %               |                   |
-            %      vertex 1 +--------m2---------+ vertex 2
+            %               +-p2-------( M4 )-------p1-+
+            %               |                          |
+            %               p1                         p2
+            %               |                          |
+            %               |                          |
+            %             ( M1 )                     ( M3 )
+            %               |                          |
+            %               |                          |
+            %               p2                         p1
+            %               |                          |
+            %               +-p1-------( M2 )-------p2-+ 
             
-            points = [top left bottom left;... % m1
-                bottom left bottom right;...   % m2
-                bottom right top right;...     % m3
-                top right top left];           % m4
-            
-            %Loop m1 to m4
-            %Each triangle uses 3 points, p1, p2, and the center point
-            
+            points = [tp lt bm lt;... % m1
+                      bm lt bm rt;... % m2
+                      bm rt tp rt;... % m3
+                      tp rt tp lt];   % m4
+                  
+%             plot(X([tp,bm],[lt,rt]),Y([tp,bm],[lt,rt]),'r.')
+
             vert = [];
-            
-            for m = 1:4 %For all 4 Triangles in rectangle
+            for m = 1:4 %Loop m1 to m4
                 section = points(m,:);
                 p1 = Z(section(1),section(2));
                 p1coords = [X(section(1),section(2)), Y(section(1),section(2))];
                 p2 = Z(section(3),section(4));
                 p2coords = [X(section(3),section(4)), Y(section(3),section(4))];
                 
-                %Puts points and center coordinates in a matrix
-                coords = [p1coords ; p2coords];
-                pointVals = [p1; p2];
+                if abs(p2-p1) > 10e4
+                    disp(['Gradient High: Rounding error may occur. Row: ' ...
+                        num2str(ii) ' Col: ' num2str(jj)])
+                end
                 
                 if (p1>level && p2>level) ||...
                         (p1<level && p2<level) ||...
                         (p1==level && p2==level)
                     continue;
+                elseif p1 == Inf || p2 == Inf
+                    if p1 == Inf
+                        vert = [vert; round(p2coords,4)];                                             
+                    else
+                        vert = [vert; round(p1coords,4)];   
+                    end
+                    
+                elseif p1 == -Inf || p2 == -Inf
+                    if p1 == -Inf                        
+                        vert = [vert; round(p2coords,4)];                                             
+                    else
+                        vert = [vert; round(p1coords,4)];   
+                    end
                 else
                     vertX = round((level-p1)*(p2coords(1)-p1coords(1))/(p2-p1)+p1coords(1),4);
                     vertY = round((level-p1)*(p2coords(2)-p1coords(2))/(p2-p1)+p1coords(2),4);
                     vert = [vert; vertX vertY];
-                end    
+                end
                 
             end
             
             
             %Make decisions based on number of vertices
-            vert = unique(vert,'rows'); %Delete duplicate vertices
             [numVert,~] = size(vert);
+            numUnique = length(unique(vert,'rows'));
             
             if numVert == 1
                 continue;
-            elseif numVert == 2 %Happy Happy
-                segment{end+1} = vert; %Add line to cell array                
+            elseif numVert == 2
+                segment{end+1} = vert; %Add line to cell array
             elseif numVert == 3
-                error('Investigate 3 vertex case')
-            elseif numVert == 4
-                distance = [0;0;0;0];
-                for vv = 2:4
-                    distance(vv) = ((vert(vv,1)-vert(1,1))^2+(vert(vv,2)-vert(1,2))^2)^0.5;                    
+                if numUnique == 2
+                    vert = unique(vert,'rows'); %Delete duplicate vertices
+                    segment{end+1} = vert; %Add line to cell array
+                elseif numUnique == 3
+                    error('Investigate 3 vertex case')
                 end
-                [~,II] = min(distance(2:4));
-                segment{end+1} = [vert(1,:) ; vert(II+1,:)]; %Add segment 
                 
-                
-                vert([1,II+1],:) = []; %Delete used points
-                segment{end+1} = vert; %Save Remaining points as segment;
+            elseif numVert == 4
+                if numUnique == 1
+                    continue; %Shouldn't Happen Really
+                elseif numUnique == 2
+                    vert = unique(vert,'rows'); %Delete duplicate vertices
+                    segment{end+1} = vert; %Add line to cell array
+                    continue
+                elseif numUnique == 3
+                    error('Investigate 3 vertex case')
+                else
+                    distance = [0;0;0;0];
+                    for vv = 2:4
+                        distance(vv) = ((vert(vv,1)-vert(1,1))^2+(vert(vv,2)-vert(1,2))^2)^0.5;
+                    end
+                    diagDistance = distance([2,4]);
+                    %Connect to closest vertex
+                    if diagDistance(1) < diagDistance(2)
+                        segment{end+1} = [vert(1,:) ; vert(2,:)]; %Add segment
+                        vert([1,2],:) = []; %Delete used points
+                    elseif diagDistance(2) < diagDistance(1)
+                        segment{end+1} = [vert(1,:) ; vert(4,:)]; %Add segment
+                        vert([1,4],:) = []; %Delete used points
+                    else %If side vertices are equally far away.
+                        if Z(ii,jj) > level
+                            segment{end+1} = [vert(1,:) ; vert(2,:)]; %Add segment
+                            vert([1,2],:) = []; %Delete used points
+                        else
+                            segment{end+1} = [vert(1,:) ; vert(4,:)]; %Add segment
+                            vert([1,4],:) = []; %Delete used points
+                        end
+                    end
+                    segment{end+1} = vert; %Save Remaining points as segment;
+                end
                 
             else
                 error('Investigate weird case :(')
@@ -115,32 +151,13 @@ for level = LEVELS
         end
     end
     
-    %% SECTION 2: DELETE LINE SEGMENT COPIES
-    %trackr is an array that tracks the status of the "segment" cell array
-    %throughout the sorting progress.  Line segments are represented by cell
-    %elements in "segment" cell array.  In this section, we change the
-    %duplicate segment to NaNs so they cannot be matched with anything later,
-    %meanwhile recording that segments index in trackr.  They are then deleted.
-    trackr = zeros(length(segment),1); %initialize
-    for ii = 1:length(segment)
-        for jj = 1:length(segment)
-            if ii == jj
-                continue;
-            end
-            %Flip Line Segment
-            opp = flip(segment{jj});
-            %See if the segment matches another exactly or its reverse
-            if all(segment{ii}(:) == segment{jj}(:)) || all(segment{ii}(:) == opp(:))
-                segment{jj} = [NaN NaN; NaN NaN];
-                trackr(jj) = 1;
-            end
-        end
+    if isempty(segment)
+        continue;
     end
-    segment = segment(~logical(trackr)); %Remove used lines
-    trackr = trackr(~logical(trackr)); %Shorten line tracker so it still works later
+    
     
     %% SECTION 3: SORT LINES INTO DISTINCT CONTOURS
-    
+    trackr = zeros(length(segment),1); %initialize
     cN = 0;
     while ~isempty(segment) %Every line must belong to a contour DUH
         SkipIndex = 1;
